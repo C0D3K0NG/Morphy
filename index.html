@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gemi's Movie Den</title>
+    
+    <!-- Tailwind CSS (CDN for simplicity, or install locally) -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Lucide Icons (For fallback/UI icons like arrows) -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
+
+    <!-- Link to your Custom CSS -->
+    <link rel="stylesheet" href="styles.css">
+
+    <!-- Tailwind Config -->
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: { sans: ['Inter', 'sans-serif'] },
+                    colors: { 'gemi-orange': '#f97316' }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="selection:bg-orange-500 selection:text-white">
+
+    <!-- Background Ambience -->
+    <div class="ambient-glow"></div>
+    <div class="orb-glow"></div>
+
+    <!-- Navbar -->
+    <nav class="flex justify-between items-center p-6 max-w-6xl mx-auto mb-8">
+        <div class="flex items-center gap-2 font-bold text-xl tracking-tighter">
+            <!-- Icon placeholder -->
+            <i data-lucide="film" class="text-orange-500"></i> Gemi's Movie Den
+        </div>
+        <div class="hidden md:flex gap-8 text-sm text-gray-400 font-medium">
+            <span class="hover:text-white cursor-pointer transition-colors">Moods</span>
+            <span class="hover:text-white cursor-pointer transition-colors">Just Watch</span>
+        </div>
+        <button class="bg-white/5 hover:bg-white/10 border border-white/10 px-4 py-2 rounded-lg text-sm font-medium transition-all">
+            My List
+        </button>
+    </nav>
+
+    <!-- Main Content -->
+    <main class="max-w-4xl mx-auto px-6 relative z-10 flex flex-col items-center min-h-[60vh]">
+        
+        <div id="header-section" class="text-center mb-12 space-y-4 animate-fade-in">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/5 border border-white/10 text-xs font-medium text-orange-400 mb-4">
+                <i data-lucide="sparkles" width="12"></i> No More Endless Scrolling
+            </div>
+            <h1 class="text-5xl md:text-7xl font-bold tracking-tight bg-clip-text text-transparent bg-gradient-to-b from-white via-white to-gray-500 leading-[1.1]">
+                Movie Khujish Na,<br /> Chill Mar!
+            </h1>
+            <p class="text-gray-400 text-lg max-w-xl mx-auto">
+                Gemi is here. You just grab the popcorn, I'll find the perfect movie.
+            </p>
+        </div>
+
+        <!-- Dynamic Content Container -->
+        <div id="app-container" class="w-full max-w-3xl">
+            <!-- Content injected by script.js -->
+        </div>
+
+    </main>
+
+    <!-- Footer -->
+    <footer class="mt-20 border-t border-white/5 py-10 text-center w-full">
+        <p class="text-gray-600 text-xs uppercase tracking-widest mb-4">Made with ❤️ by Gemi</p>
+    </footer>
+
+    <!-- Link to your Custom JS -->
+    <script src="script.js"></script>
+</body>
+</html>
