@@ -5,6 +5,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Gemi's Movie Den</title>
     
+    <!-- Favicon -->
+    <link rel="icon" type="image/svg+xml" href="favicon.svg">
+    <link rel="alternate icon" href="favicon.svg">
+    
     <!-- Tailwind CSS (CDN for simplicity, or install locally) -->
     <script src="https://cdn.tailwindcss.com"></script>
     
@@ -45,8 +49,10 @@
             <span class="hover:text-white cursor-pointer transition-colors">Moods</span>
             <span class="hover:text-white cursor-pointer transition-colors">Just Watch</span>
         </div>
-        <button class="bg-white/5 hover:bg-white/10 border border-white/10 px-4 py-2 rounded-lg text-sm font-medium transition-all">
+        <button onclick="showMyList()" class="bg-white/5 hover:bg-white/10 border border-white/10 px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-2 relative">
+            <i data-lucide="heart" width="16"></i>
             My List
+            <span id="favorites-badge" class="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center font-bold" style="display: none;">0</span>
         </button>
     </nav>
 
@@ -58,7 +64,7 @@
                 <i data-lucide="sparkles" width="12"></i> No More Endless Scrolling
             </div>
             <h1 class="text-5xl md:text-7xl font-bold tracking-tight bg-clip-text text-transparent bg-gradient-to-b from-white via-white to-gray-500 leading-[1.1]">
-                Movie Khujish Na,<br /> Chill Mar!
+                Stop Searching,<br /> Just Chill!
             </h1>
             <p class="text-gray-400 text-lg max-w-xl mx-auto">
                 Gemi is here. You just grab the popcorn, I'll find the perfect movie.
