@@ -29,12 +29,14 @@ body {
 .text-gradient {
     background: linear-gradient(135deg, #fff 0%, #a5a5a5 100%);
     -webkit-background-clip: text;
+    background-clip: text;
     -webkit-text-fill-color: transparent;
 }
 
 .text-gradient-primary {
     background: linear-gradient(135deg, #fff 30%, var(--primary) 100%);
     -webkit-background-clip: text;
+    background-clip: text;
     -webkit-text-fill-color: transparent;
 }
 
@@ -66,24 +68,49 @@ body {
 }
 
 @keyframes breathe {
-    0%, 100% { opacity: 0.8; transform: translateX(-50%) scale(1); }
-    50% { opacity: 0.5; transform: translateX(-50%) scale(1.1); }
+
+    0%,
+    100% {
+        opacity: 0.8;
+        transform: translateX(-50%) scale(1);
+    }
+
+    50% {
+        opacity: 0.5;
+        transform: translateX(-50%) scale(1.1);
+    }
 }
 
 /* --- Animations --- */
 @keyframes fadeInUp {
-    from { opacity: 0; transform: translateY(20px) scale(0.98); }
-    to { opacity: 1; transform: translateY(0) scale(1); }
+    from {
+        opacity: 0;
+        transform: translateY(20px) scale(0.98);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
 }
 
 .animate-enter {
     animation: fadeInUp 0.6s var(--ease-out-back) forwards;
-    opacity: 0; /* Important: start invisible */
+    opacity: 0;
+    /* Important: start invisible */
 }
 
-.delay-1 { animation-delay: 0.1s; }
-.delay-2 { animation-delay: 0.2s; }
-.delay-3 { animation-delay: 0.3s; }
+.delay-1 {
+    animation-delay: 0.1s;
+}
+
+.delay-2 {
+    animation-delay: 0.2s;
+}
+
+.delay-3 {
+    animation-delay: 0.3s;
+}
 
 .hover-lift {
     transition: transform 0.3s var(--ease-out-back), box-shadow 0.3s ease, border-color 0.3s ease;
@@ -98,14 +125,20 @@ body {
 .hover-scale {
     transition: transform 0.2s ease;
 }
+
 .hover-scale:active {
     transform: scale(0.96);
 }
 
 /* --- Skeleton Loading --- */
 @keyframes shimmer {
-    0% { background-position: -1000px 0; }
-    100% { background-position: 1000px 0; }
+    0% {
+        background-position: -1000px 0;
+    }
+
+    100% {
+        background-position: 1000px 0;
+    }
 }
 
 .skeleton {
@@ -119,15 +152,18 @@ body {
 ::-webkit-scrollbar {
     width: 8px;
 }
+
 ::-webkit-scrollbar-track {
-    background: #000; 
+    background: #000;
 }
+
 ::-webkit-scrollbar-thumb {
-    background: #333; 
+    background: #333;
     border-radius: 4px;
 }
+
 ::-webkit-scrollbar-thumb:hover {
-    background: #555; 
+    background: #555;
 }
 
 /* --- Modal Overlay --- */
@@ -138,8 +174,13 @@ body {
 }
 
 @keyframes fadeIn {
-    from { opacity: 0; }
-    to { opacity: 1; }
+    from {
+        opacity: 0;
+    }
+
+    to {
+        opacity: 1;
+    }
 }
 
 /* --- Inputs --- */
@@ -148,6 +189,7 @@ body {
     border: 1px solid var(--glass-border);
     transition: all 0.3s ease;
 }
+
 .glass-input:focus {
     background: rgba(0, 0, 0, 0.5);
     border-color: var(--primary);
