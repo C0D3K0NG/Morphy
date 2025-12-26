@@ -7,18 +7,17 @@
     
     <!-- Favicon -->
     <link rel="icon" type="image/svg+xml" href="favicon.svg">
-    <link rel="alternate icon" href="favicon.svg">
     
-    <!-- Tailwind CSS (CDN for simplicity, or install locally) -->
+    <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     
-    <!-- Lucide Icons (For fallback/UI icons like arrows) -->
+    <!-- Lucide Icons -->
     <script src="https://unpkg.com/lucide@latest"></script>
 
-    <!-- Google Fonts -->
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <!-- Google Fonts: Outfit for that modern, techy look -->
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;700;800&display=swap" rel="stylesheet">
 
-    <!-- Link to your Custom CSS -->
+    <!-- Custom CSS -->
     <link rel="stylesheet" href="styles.css">
 
     <!-- Tailwind Config -->
@@ -26,64 +25,94 @@
         tailwind.config = {
             theme: {
                 extend: {
-                    fontFamily: { sans: ['Inter', 'sans-serif'] },
-                    colors: { 'gemi-orange': '#f97316' }
+                    fontFamily: { sans: ['Outfit', 'sans-serif'] },
+                    colors: { 
+                        'gemi-orange': '#f97316',
+                        'gemi-dark': '#050505',
+                        'glass-border': 'rgba(255, 255, 255, 0.08)'
+                    }
                 }
             }
         }
     </script>
 </head>
-<body class="selection:bg-orange-500 selection:text-white">
+<body class="selection:bg-orange-500 selection:text-white pb-20">
 
     <!-- Background Ambience -->
     <div class="ambient-glow"></div>
     <div class="orb-glow"></div>
 
+    <!-- Shortcuts Warning (Small Screen) -->
+    <div class="fixed top-0 left-0 w-full bg-orange-600 text-white text-xs p-1 text-center font-bold md:hidden z-50">
+        Best experienced on Desktop
+    </div>
+
     <!-- Navbar -->
-    <nav class="flex justify-between items-center p-6 max-w-6xl mx-auto mb-8">
-        <div class="flex items-center gap-2 font-bold text-xl tracking-tighter">
-            <!-- Icon placeholder -->
-            <i data-lucide="film" class="text-orange-500"></i> Gemi's Movie Den
+    <nav class="flex justify-between items-center p-6 max-w-7xl mx-auto mb-8 animate-enter delay-1 relative z-20">
+        <div class="flex items-center gap-2 font-bold text-xl tracking-tighter hover:text-orange-500 transition-colors cursor-pointer" onclick="reset()">
+            <i data-lucide="film" class="text-orange-500"></i> 
+            <span>Gemi's <span class="text-gray-500">Movie Den</span></span>
         </div>
-        <div class="hidden md:flex gap-8 text-sm text-gray-400 font-medium">
-            <span class="hover:text-white cursor-pointer transition-colors">Moods</span>
-            <span class="hover:text-white cursor-pointer transition-colors">Just Watch</span>
+        
+        <div class="flex items-center gap-4">
+            <button onclick="toggleShortcutsHelp()" class="hidden md:flex items-center gap-2 text-xs font-mono text-gray-500 hover:text-white transition-colors border border-white/5 rounded px-2 py-1" data-tooltip="Keyboard Shortcuts (Shift + ?)">
+                <i data-lucide="keyboard" width="14"></i> shortcuts
+            </button>
+
+            <button onclick="showMyList()" class="glass-panel px-4 py-2 rounded-lg text-sm font-medium hover:bg-white/5 transition-all flex items-center gap-2 relative group">
+                <i data-lucide="heart" width="16" class="text-red-500/80 group-hover:text-red-500 transition-colors"></i>
+                <span class="hidden sm:inline">My List</span>
+                <span id="favorites-badge" class="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] rounded-full w-4 h-4 flex items-center justify-center font-bold shadow-lg" style="display: none;">0</span>
+            </button>
         </div>
-        <button onclick="showMyList()" class="bg-white/5 hover:bg-white/10 border border-white/10 px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-2 relative">
-            <i data-lucide="heart" width="16"></i>
-            My List
-            <span id="favorites-badge" class="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center font-bold" style="display: none;">0</span>
-        </button>
     </nav>
 
     <!-- Main Content -->
-    <main class="max-w-4xl mx-auto px-6 relative z-10 flex flex-col items-center min-h-[60vh]">
+    <main class="max-w-6xl mx-auto px-6 relative z-10 flex flex-col items-center min-h-[60vh]">
         
-        <div id="header-section" class="text-center mb-12 space-y-4 animate-fade-in">
-            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/5 border border-white/10 text-xs font-medium text-orange-400 mb-4">
-                <i data-lucide="sparkles" width="12"></i> No More Endless Scrolling
+        <!-- Header Section -->
+        <div id="header-section" class="text-center mb-16 space-y-4 animate-enter delay-2">
+            <div class="inline-flex items-center gap-2 px-4 py-1.5 rounded-full glass-panel text-xs font-semibold text-orange-400 mb-2 border-orange-500/20 shadow-[0_0_20px_rgba(249,115,22,0.1)]">
+                <i data-lucide="sparkles" width="12"></i> AI-Powered Discovery
             </div>
-            <h1 class="text-5xl md:text-7xl font-bold tracking-tight bg-clip-text text-transparent bg-gradient-to-b from-white via-white to-gray-500 leading-[1.1]">
-                Stop Searching,<br /> Just Chill!
+            
+            <h1 class="text-5xl md:text-8xl font-extrabold tracking-tight leading-[0.9]">
+                <span class="text-gradient">Stop Searching.</span><br />
+                <span class="text-gradient-primary">Just Watch.</span>
             </h1>
-            <p class="text-gray-400 text-lg max-w-xl mx-auto">
-                Gemi is here. You just grab the popcorn, I'll find the perfect movie.
+            
+            <p class="text-gray-400 text-lg md:text-xl max-w-2xl mx-auto font-light leading-relaxed">
+                Tell Gemi what you feel. Get a movie that hits the spot.
+                <span class="hidden md:inline opacity-50 text-sm block mt-2">(Press <kbd class="font-mono bg-white/10 px-1 rounded text-white">/</kbd> to start)</span>
             </p>
         </div>
 
-        <!-- Dynamic Content Container -->
-        <div id="app-container" class="w-full max-w-3xl">
-            <!-- Content injected by script.js -->
+        <!-- App Container -->
+        <div id="app-container" class="w-full">
+            <!-- Dynamic Content -->
         </div>
 
     </main>
 
     <!-- Footer -->
-    <footer class="mt-20 border-t border-white/5 py-10 text-center w-full">
-        <p class="text-gray-600 text-xs uppercase tracking-widest mb-4">Made with ❤️ by Gemi</p>
+    <footer class="mt-32 border-t border-white/5 py-10 text-center w-full min-h-[100px] text-gray-600">
+        <div class="flex flex-col items-center gap-4">
+            <p class="text-xs uppercase tracking-widest font-bold opacity-50 hover:opacity-100 transition-opacity">
+                Made with <span class="text-red-500">❤️</span> by Gemi
+            </p>
+            <div class="flex gap-4 opacity-30 hover:opacity-80 transition-opacity">
+                <a href="#" class="hover:text-white transition-colors"><i data-lucide="github" width="16"></i></a>
+                <a href="#" class="hover:text-white transition-colors"><i data-lucide="twitter" width="16"></i></a>
+            </div>
+        </div>
     </footer>
 
-    <!-- Link to your Custom JS -->
+    <!-- Modals Container -->
+    <div id="modal-container" class="relative z-50"></div>
+
+    <!-- Toast Container -->
+    <div id="toast-container" class="fixed top-6 right-6 z-[60] flex flex-col gap-2 pointer-events-none"></div>
+
     <script src="script.js"></script>
 </body>
 </html>

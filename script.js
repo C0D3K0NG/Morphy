@@ -1,8 +1,19 @@
 // --- CONFIGURATION ---
-// API is proxied through the server; no key in the browser
 let API_READY = false;
 
-// Check server health on load
+// Random Moods for "Surprise Me"
+const RANDOM_MOODS = [
+    "A cyberpunk heist gone wrong with neon aesthetics",
+    "A 90s rom-com that takes place in New York during Christmas",
+    "A psychological thriller with a mind-bending plot twist",
+    "A Ghibli-style animated movie about nature and magic",
+    "A gritty western revenge story with sparse dialogue",
+    "A space opera that focuses on politics and diplomacy",
+    "A horror movie that takes place in a single room",
+    "An inspiring sports drama based on a true story"
+];
+
+// --- INITIALIZATION ---
 async function initializeAPIKey() {
     try {
         const response = await fetch('/api/config');
@@ -11,9 +22,9 @@ async function initializeAPIKey() {
         console.log('✅ API ready');
     } catch (error) {
         console.error('❌ Failed to reach API:', error);
-        alert('Could not reach the server. Make sure it is running (npm start) and that OPENROUTER_API_KEY is set in .env');
+        showNotification('Cannot reach server. Ensure npm start is running.', 'error');
     }
-} 
+}
 
 // --- STATE MANAGEMENT ---
 const state = {
@@ -23,714 +34,494 @@ const state = {
     customMood: '',
     isLoading: false,
     aiHype: null,
-    isHypeLoading: false
+    isHypeLoading: false,
+    showShortcuts: false
 };
 
-// --- STORAGE FUNCTIONS ---
-function getFavorites() {
-    try {
-        const stored = localStorage.getItem('gemi_favorites');
-        return stored ? JSON.parse(stored) : [];
-    } catch (e) {
-        console.error('Error reading favorites from localStorage:', e);
-        return [];
+// --- KEYBOARD SHORTCUTS ---
+document.addEventListener('keydown', (e) => {
+    // Ignore shortcuts if typing in an input
+    if (e.target.tagName === 'TEXTAREA' || e.target.tagName === 'INPUT') {
+        if (e.key === 'Escape') e.target.blur(); // Allow escaping input
+        return;
+    }
+
+    switch(e.key.toLowerCase()) {
+        case '/':
+            e.preventDefault();
+            setStep('ai-input');
+            break;
+        case 'escape':
+            if (state.showShortcuts) toggleShortcutsHelp();
+            else if (state.step !== 'genre') reset();
+            break;
+        case 'f':
+            if (state.step === 'result') toggleFavorite();
+            break;
+        case 'r':
+            if (state.step === 'ai-input') randomMood();
+            break;
+        case '?':
+            if (e.shiftKey) toggleShortcutsHelp();
+            break;
+    }
+});
+
+function toggleShortcutsHelp() {
+    state.showShortcuts = !state.showShortcuts;
+    const container = document.getElementById('modal-container');
+    
+    if (state.showShortcuts) {
+        container.innerHTML = `
+            <div class="fixed inset-0 z-50 flex items-center justify-center p-4 modal-overlay" onclick="toggleShortcutsHelp()">
+                <div class="glass-panel p-8 rounded-2xl max-w-md w-full relative animate-enter" onclick="event.stopPropagation()">
+                    <button onclick="toggleShortcutsHelp()" class="absolute top-4 right-4 text-gray-400 hover:text-white"><i data-lucide="x"></i></button>
+                    <h2 class="text-2xl font-bold mb-6 flex items-center gap-2">
+                        <i data-lucide="keyboard" class="text-orange-500"></i> Shortcuts
+                    </h2>
+                    <div class="space-y-4 font-mono text-sm text-gray-300">
+                        <div class="flex justify-between items-center border-b border-white/5 pb-2">
+                            <span>Focus Search</span> <kbd class="bg-white/10 px-2 py-1 rounded text-white">/</kbd>
+                        </div>
+                        <div class="flex justify-between items-center border-b border-white/5 pb-2">
+                            <span>Go Back / Close</span> <kbd class="bg-white/10 px-2 py-1 rounded text-white">Esc</kbd>
+                        </div>
+                        <div class="flex justify-between items-center border-b border-white/5 pb-2">
+                            <span>Toggle Favorite</span> <kbd class="bg-white/10 px-2 py-1 rounded text-white">F</kbd>
+                        </div>
+                        <div class="flex justify-between items-center border-b border-white/5 pb-2">
+                            <span>Random Mood</span> <kbd class="bg-white/10 px-2 py-1 rounded text-white">R</kbd>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+        lucide.createIcons();
+    } else {
+        container.innerHTML = '';
     }
 }
 
-function saveFavorites(favorites) {
-    try {
-        localStorage.setItem('gemi_favorites', JSON.stringify(favorites));
-    } catch (e) {
-        console.error('Error saving favorites to localStorage:', e);
-        alert('Failed to save favorites. Your browser may have storage restrictions.');
-    }
+// --- STORAGE ---
+function getFavorites() {
+    try { return JSON.parse(localStorage.getItem('gemi_favorites') || '[]'); } 
+    catch(e) { return []; }
+}
+
+function saveFavorites(data) {
+    try { localStorage.setItem('gemi_favorites', JSON.stringify(data)); }
+    catch(e) { showNotification('Storage full or disabled', 'error'); }
 }
 
 function addToFavorites(movie) {
-    const favorites = getFavorites();
-    // Check if movie already exists (by title and year)
-    const exists = favorites.some(fav => fav.title === movie.title && fav.year === movie.year);
-    if (!exists) {
-        const movieWithId = {
-            ...movie,
-            id: `${movie.title}_${movie.year}_${Date.now()}`,
-            addedAt: new Date().toISOString(),
-            genre: state.selectedGenre || 'Unknown'
-        };
-        favorites.push(movieWithId);
-        saveFavorites(favorites);
-        return true;
-    }
-    return false;
-}
-
-function removeFromFavorites(movieId) {
-    const favorites = getFavorites();
-    const filtered = favorites.filter(fav => fav.id !== movieId);
-    saveFavorites(filtered);
-}
-
-function isFavorite(movie) {
-    const favorites = getFavorites();
-    return favorites.some(fav => fav.title === movie.title && fav.year === movie.year);
-}
-
-function getMovieId(movie) {
-    const favorites = getFavorites();
-    const found = favorites.find(fav => fav.title === movie.title && fav.year === movie.year);
-    return found ? found.id : null;
-}
-
-function addToWatchHistory(movie) {
-    try {
-        const history = getWatchHistory();
-        const movieEntry = {
-            ...movie,
-            viewedAt: new Date().toISOString(),
-            genre: state.selectedGenre || 'Unknown'
-        };
-        // Remove if already exists and add to front
-        const filtered = history.filter(h => !(h.title === movie.title && h.year === movie.year));
-        filtered.unshift(movieEntry);
-        // Keep only last 50 entries
-        const limited = filtered.slice(0, 50);
-        localStorage.setItem('gemi_watch_history', JSON.stringify(limited));
-    } catch (e) {
-        console.error('Error saving watch history:', e);
-        // Don't show alert for watch history - it's not critical
-    }
-}
-
-function getWatchHistory() {
-    try {
-        const stored = localStorage.getItem('gemi_watch_history');
-        return stored ? JSON.parse(stored) : [];
-    } catch (e) {
-        console.error('Error reading watch history from localStorage:', e);
-        return [];
-    }
-}
-
-// --- DATABASE ---
-// Using Lucide icons for genre visualization
-const movieDatabase = {
-    Action: {
-        list: [
-            { title: "Mad Max: Fury Road", year: "2015", desc: "Pure adrenaline.", rating: "8.1" },
-            { title: "John Wick", year: "2014", desc: "Never mess with a man's dog.", rating: "7.4" }
-        ],
-        icon: "zap",
-        sub: "Action Packed"
-    },
-    Comedy: {
-        list: [
-            { title: "Superbad", year: "2007", desc: "High school cringe.", rating: "7.6" },
-            { title: "The Grand Budapest Hotel", year: "2014", desc: "Quirky magic.", rating: "8.1" }
-        ],
-        icon: "smile",
-        sub: "Laugh Out Loud"
-    },
-    Horror: {
-        list: [
-            { title: "Hereditary", year: "2018", desc: "Disturbing drama.", rating: "7.3" },
-            { title: "The Shining", year: "1980", desc: "Here's Johnny!", rating: "8.4" }
-        ],
-        icon: "skull",
-        sub: "Scared Yet?"
-    },
-    SciFi: {
-        list: [
-            { title: "Interstellar", year: "2014", desc: "Space travel.", rating: "8.6" },
-            { title: "Inception", year: "2010", desc: "Dream within a dream.", rating: "8.8" }
-        ],
-        icon: "rocket",
-        sub: "Mind Blown"
-    },
-    Drama: {
-        list: [
-            { title: "Parasite", year: "2019", desc: "Class war masterpiece.", rating: "8.5" },
-            { title: "Whiplash", year: "2014", desc: "Intense drumming.", rating: "8.5" }
-        ],
-        icon: "film",
-        sub: "Emotional Rollercoaster"
-    }
-};
-
-// --- GEMINI API HELPER ---
-async function callGemini(prompt) {
-    if (!API_READY) {
-        console.error("API not ready");
-        return null;
-    }
+    const favs = getFavorites();
+    if (favs.some(f => f.title === movie.title && f.year === movie.year)) return false;
     
-    if (!prompt || !prompt.trim()) {
-        console.error("Empty prompt provided");
-        return null;
-    }
-    
-    try {
-        const response = await fetch('/api/generate', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ prompt: prompt.trim() })
-        });
-
-        if (!response.ok) {
-            const errorData = await response.json().catch(() => ({}));
-            const errorMsg = errorData.error || `Server returned ${response.status}`;
-            throw new Error(errorMsg);
-        }
-
-        const data = await response.json();
-
-        if (!data || !data.text) {
-            throw new Error('Invalid response format from server');
-        }
-
-        return data.text.trim();
-    } catch (error) {
-        console.error("OpenRouter API Error:", error);
-        // Don't show alert here - let the calling function handle it
-        return null;
-    }
+    favs.push({ ...movie, id: `${movie.title}_${movie.year}_${Date.now()}`, addedAt: new Date().toISOString() });
+    saveFavorites(favs);
+    return true;
 }
 
-// --- RENDER FUNCTIONS ---
-const container = document.getElementById('app-container');
-
-function updateNavbarBadge() {
-    try {
-        const favorites = getFavorites();
-        const badge = document.getElementById('favorites-badge');
-        if (badge) {
-            badge.textContent = favorites.length;
-            badge.style.display = favorites.length > 0 ? 'flex' : 'none';
-        }
-    } catch (e) {
-        console.error('Error updating navbar badge:', e);
-    }
+function removeFromFavorites(id) {
+    const favs = getFavorites().filter(f => f.id !== id);
+    saveFavorites(favs);
 }
 
-function render() {
-    if (!container) {
-        console.error('Container element not found!');
+function exportFavorites() {
+    const favs = getFavorites();
+    if (!favs.length) {
+        showNotification("No favorites to export", "error");
         return;
     }
-    
+    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(favs, null, 2));
+    const downloadAnchor = document.createElement('a');
+    downloadAnchor.setAttribute("href", dataStr);
+    downloadAnchor.setAttribute("download", "gemi_favorites.json");
+    document.body.appendChild(downloadAnchor);
+    downloadAnchor.click();
+    downloadAnchor.remove();
+    showNotification("Favorites exported!");
+}
+
+// --- CORE UI ---
+const container = document.getElementById('app-container');
+
+function render() {
     try {
-        container.innerHTML = ''; // Clear current content
-        
+        container.innerHTML = '';
         if (state.step === 'genre') renderGenreView();
         else if (state.step === 'ai-input') renderAiInputView();
         else if (state.step === 'result') renderResultView();
         else if (state.step === 'mylist') renderMyListView();
         
-        // Update navbar badge
         updateNavbarBadge();
-        
-        // Initialize standard UI icons (back arrows etc) from Lucide
-        if (window.lucide) {
-            try {
-                lucide.createIcons();
-            } catch (e) {
-                console.warn('Error initializing Lucide icons:', e);
-            }
-        }
+        if (window.lucide) lucide.createIcons();
+        attachTooltips();
     } catch (e) {
-        console.error('Error during render:', e);
-        container.innerHTML = '<div class="p-8 text-center text-red-400">An error occurred. Please refresh the page.</div>';
+        console.error(e);
+        container.innerHTML = `<div class="text-center text-red-500 py-10">Something went wrong. Please refresh.</div>`;
     }
 }
 
-function renderGenreView() {
-    // Generate genre cards dynamically
-    const genreCardsHTML = Object.keys(movieDatabase).map(key => {
-        const data = movieDatabase[key];
-        return createGenreCard(key, data.icon, data.sub);
-    }).join('');
+function updateNavbarBadge() {
+    const count = getFavorites().length;
+    const badge = document.getElementById('favorites-badge');
+    if (badge) {
+        badge.textContent = count;
+        badge.style.display = count > 0 ? 'flex' : 'none';
+    }
+}
 
-    const html = `
-        <div class="animate-fade-in grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
-            <!-- Magic Mood Button -->
-            <button onclick="setStep('ai-input')" class="md:col-span-2 group relative overflow-hidden bg-gradient-to-br from-[#1a1a1a] to-[#0a0a0a] border border-white/10 hover:border-orange-500/50 rounded-2xl p-8 text-left transition-all duration-300 hover:shadow-[0_0_30px_-10px_rgba(249,115,22,0.3)]">
-                <div class="absolute top-0 right-0 p-4 opacity-20 group-hover:opacity-40 transition-opacity">
-                    <i data-lucide="sparkles" class="text-orange-500 w-[100px] h-[100px] rotate-12"></i>
+function showNotification(msg, type = 'success') {
+    const toastContainer = document.getElementById('toast-container');
+    if (!toastContainer) return;
+
+    const toast = document.createElement('div');
+    const bgClass = type === 'error' ? 'bg-red-500/90' : 'bg-orange-500/90';
+    
+    toast.className = `${bgClass} text-white px-6 py-3 rounded-xl shadow-lg backdrop-blur-md animate-enter text-sm font-medium flex items-center gap-2 pointer-events-auto`;
+    toast.innerHTML = type === 'error' 
+        ? `<i data-lucide="alert-circle" width="16"></i> ${msg}`
+        : `<i data-lucide="check-circle" width="16"></i> ${msg}`;
+    
+    toastContainer.appendChild(toast);
+    if (window.lucide) lucide.createIcons();
+
+    setTimeout(() => {
+        toast.style.opacity = '0';
+        toast.style.transform = 'translateY(-10px)';
+        toast.style.transition = 'all 0.3s ease';
+        setTimeout(() => toast.remove(), 300);
+    }, 3000);
+}
+
+// --- VIEWS ---
+
+function renderGenreView() {
+    const genres = [
+        { key: 'Action', icon: 'zap', sub: 'Adrenaline Rush' },
+        { key: 'Comedy', icon: 'smile', sub: 'Good Vibes' },
+        { key: 'Horror', icon: 'ghost', sub: 'Nightmares' }, // Skull to Ghost for variety
+        { key: 'SciFi', icon: 'rocket', sub: 'Future World' },
+        { key: 'Drama', icon: 'film', sub: 'Deep Stories' },
+        { key: 'Romance', icon: 'heart', sub: 'Love & Feels' },
+        { key: 'Thriller', icon: 'eye', sub: 'Edge of Seat' },
+        { key: 'Fantasy', icon: 'wand-2', sub: 'Magic & Myths' }
+    ];
+
+    container.innerHTML = `
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-4 animate-enter">
+            <!-- Hero Mood Button -->
+            <button onclick="setStep('ai-input')" class="md:col-span-4 glass-panel group relative overflow-hidden rounded-2xl p-10 text-left transition-all hover:border-orange-500/50 hover:shadow-[0_0_40px_-5px_rgba(249,115,22,0.2)] mb-4">
+                <div class="absolute top-0 right-0 p-8 opacity-10 group-hover:opacity-30 transition-opacity duration-500">
+                    <i data-lucide="sparkles" class="w-32 h-32 rotate-12 text-orange-500"></i>
                 </div>
-                <div class="relative z-10">
-                    <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-orange-500 to-red-600 flex items-center justify-center mb-4 shadow-lg shadow-orange-900/20">
-                        <i data-lucide="message-circle" class="text-white"></i>
+                <div class="relative z-10 flex flex-col md:flex-row items-start md:items-center gap-6">
+                    <div class="w-16 h-16 rounded-2xl bg-gradient-to-br from-orange-500 to-red-600 flex items-center justify-center shadow-lg shadow-orange-500/20 group-hover:scale-110 transition-transform duration-300">
+                        <i data-lucide="message-circle" class="text-white w-8 h-8"></i>
                     </div>
-                    <h3 class="text-2xl font-bold text-white mb-2">What's Your Mood?</h3>
-                    <p class="text-gray-400 text-sm max-w-md">
-                        Don't know the genre? Just tell me how you feel.
-                    </p>
+                    <div>
+                        <h2 class="text-3xl font-bold text-white mb-2">Detailed Mood Search</h2>
+                        <p class="text-gray-400 max-w-lg">Describe exactly what you want (e.g. "A 90s sci-fi with a plot twist").</p>
+                    </div>
+                    <div class="hidden md:flex ml-auto items-center gap-2 text-sm font-medium text-orange-400 group-hover:translate-x-1 transition-transform">
+                        Start Here <i data-lucide="arrow-right" w="16"></i>
+                    </div>
                 </div>
             </button>
 
-            <!-- Genre Buttons (Now using PNGs from assets) -->
-            ${genreCardsHTML}
+            <!-- Genre Grid -->
+            ${genres.map((g, i) => `
+                <button onclick="pickGenre('${g.key}')" class="glass-panel p-6 rounded-xl text-left hover-lift group relative overflow-hidden stagger-${i%3+1}">
+                    <div class="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity text-orange-500">
+                        <i data-lucide="arrow-up-right" width="16"></i>
+                    </div>
+                    <i data-lucide="${g.icon}" class="text-gray-400 group-hover:text-orange-500 mb-4 transition-colors w-8 h-8"></i>
+                    <h3 class="font-bold text-lg text-white mb-1">${g.key}</h3>
+                    <p class="text-xs text-gray-500 font-mono uppercase tracking-wider">${g.sub}</p>
+                </button>
+            `).join('')}
         </div>
     `;
-    container.innerHTML = html;
-}
-
-function createGenreCard(genre, iconName, sub) {
-    return `
-    <button onclick="pickGenre('${genre}')" class="group flex items-center justify-between p-5 bg-[#121212] border border-white/5 rounded-xl hover:bg-[#1a1a1a] hover:border-white/10 transition-all duration-200 w-full">
-        <div class="flex items-center gap-4">
-            <div class="p-3 rounded-lg bg-white/5 text-gray-400 group-hover:bg-orange-500/10 group-hover:text-orange-400 transition-colors">
-                <!-- USING LUCIDE ICONS -->
-                <i data-lucide="${iconName}" class="w-6 h-6 opacity-70 group-hover:opacity-100 transition-opacity"></i>
-            </div>
-            <div class="text-left">
-                <div class="font-bold text-gray-200 group-hover:text-white transition-colors">${genre}</div>
-                <div class="text-xs text-gray-500 font-mono group-hover:text-orange-400/80">${sub}</div>
-            </div>
-        </div>
-        <div class="text-gray-600 group-hover:text-orange-500 transition-transform group-hover:translate-x-1">→</div>
-    </button>`;
 }
 
 function renderAiInputView() {
-    const html = `
-        <div class="animate-fade-in bg-[#0f0f0f] border border-white/10 rounded-2xl p-8 relative overflow-hidden">
-            <button onclick="reset()" class="text-gray-500 hover:text-white flex items-center gap-2 text-sm mb-6 transition-colors">
-                <i data-lucide="arrow-left" width="16"></i> Back
+    container.innerHTML = `
+        <div class="glass-panel rounded-2xl p-8 max-w-2xl mx-auto animate-enter relative">
+            <button onclick="reset()" class="absolute top-6 right-6 text-gray-500 hover:text-white transition-colors" data-tooltip="Close (Esc)">
+                <i data-lucide="x"></i>
             </button>
-            <div class="mb-6">
-                <h2 class="text-2xl font-bold text-white mb-2">What are you in the mood for?</h2>
-                <p class="text-gray-400 text-sm">Speak your mind. I won't judge.</p>
+            
+            <h2 class="text-3xl font-bold mb-2">Describe the Vibe</h2>
+            <p class="text-gray-400 mb-6 text-sm">Be specific. Even oddly specific. I can handle it.</p>
+            
+            <div class="relative mb-6 group">
+                <textarea id="moodInput" onkeydown="if(event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); handleAIMoodSubmit(); }"
+                    class="w-full h-40 bg-black/40 border border-white/10 rounded-xl p-5 text-lg text-white placeholder-gray-600 focus:outline-none focus:border-orange-500/50 focus:ring-1 focus:ring-orange-500/50 transition-all resize-none glass-input"
+                    placeholder="Ex: 'Something satisfying where the bad guy loses...'"
+                >${state.customMood}</textarea>
+                <div class="absolute bottom-4 right-4 text-xs text-gray-600 group-focus-within:text-orange-500/50 transition-colors">
+                    Press Enter to search
+                </div>
             </div>
-            <textarea id="moodInput" 
-                class="w-full h-40 bg-black/50 border border-white/10 rounded-xl p-5 text-lg text-white placeholder-gray-600 focus:outline-none focus:border-orange-500/50 focus:ring-1 focus:ring-orange-500/50 transition-all resize-none mb-6"
-                placeholder="Ex: 'Something like a space heist'..."
-            >${state.customMood}</textarea>
-            <button onclick="handleAIMoodSubmit()" id="aiSubmitBtn"
-                class="w-full py-4 bg-gradient-to-r from-orange-500 to-red-600 text-white rounded-xl font-bold text-lg tracking-wide hover:shadow-[0_0_20px_rgba(234,88,12,0.4)] transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed">
-                ${state.isLoading ? '<i data-lucide="loader-2" class="animate-spin"></i> Searching...' : 'Find It!'}
-            </button>
+
+            <div class="flex gap-3">
+                <button onclick="handleAIMoodSubmit()" id="searchBtn" class="flex-1 py-4 bg-gradient-to-r from-orange-500 to-red-600 text-white rounded-xl font-bold text-lg hover:shadow-[0_0_30px_rgba(234,88,12,0.4)] transition-transform hover:scale-[1.02] active:scale-[0.98]">
+                    Find My Movie
+                </button>
+                <button onclick="randomMood()" class="px-6 rounded-xl border border-white/10 hover:bg-white/5 hover:text-orange-400 transition-colors" data-tooltip="Surprise Me (R)">
+                    <i data-lucide="shuffle"></i>
+                </button>
+            </div>
         </div>
     `;
-    container.innerHTML = html;
     
-    // Re-attach input listener
-    document.getElementById('moodInput').addEventListener('input', (e) => {
-        state.customMood = e.target.value;
-    });
+    // Auto-focus
+    setTimeout(() => document.getElementById('moodInput')?.focus(), 100);
+}
+
+function renderSkeleton() {
+    container.innerHTML = `
+        <div class="glass-panel rounded-3xl p-8 max-w-4xl mx-auto animate-enter">
+            <div class="flex flex-col md:flex-row gap-8">
+                <!-- Poster Skeleton -->
+                <div class="w-full md:w-1/3 aspect-[2/3] skeleton rounded-xl"></div>
+                
+                <!-- Content Skeleton -->
+                <div class="flex-1 space-y-6 py-4">
+                    <div class="h-12 w-3/4 skeleton rounded-lg"></div>
+                    <div class="flex gap-4">
+                        <div class="h-8 w-20 skeleton rounded-full"></div>
+                        <div class="h-8 w-24 skeleton rounded-full"></div>
+                    </div>
+                    <div class="space-y-3 pt-4">
+                        <div class="h-4 w-full skeleton rounded"></div>
+                        <div class="h-4 w-full skeleton rounded"></div>
+                        <div class="h-4 w-2/3 skeleton rounded"></div>
+                    </div>
+                    <div class="h-32 w-full skeleton rounded-xl mt-8 opacity-50"></div>
+                </div>
+            </div>
+        </div>
+    `;
 }
 
 function renderResultView() {
+    if (state.isLoading) {
+        renderSkeleton();
+        return;
+    }
+    
     if (!state.movie) return;
+
+    const m = state.movie;
+    const isFav = isFavorite(m);
     
-    // Add to watch history when viewing a movie
-    addToWatchHistory(state.movie);
-    
-    const isFav = isFavorite(state.movie);
-    const favoriteBtnText = isFav ? 'Remove from Favorites' : 'Add to Favorites';
-    const favoriteBtnIcon = isFav ? 'heart' : 'heart';
-    const favoriteBtnClass = isFav 
-        ? 'bg-red-500/20 hover:bg-red-500/30 border-red-500/30 text-red-400' 
-        : 'bg-white/5 hover:bg-white/10 border-white/10 text-white';
-    
-    const html = `
-        <div class="animate-fade-in bg-[#0f0f0f] border border-white/10 rounded-3xl overflow-hidden relative group hover:border-white/20 transition-all">
-            <div class="flex justify-between items-center p-6 border-b border-white/5 bg-white/[0.02]">
+    // Fallbacks for data
+    const cast = Array.isArray(m.cast) ? m.cast.slice(0,3).join(", ") : (m.cast || "Unknown");
+    const director = m.director || "Unknown Director";
+    const runtime = m.runtime || "N/A";
+    const boxOffice = m.box_office || "N/A";
+    const streaming = m.streaming || "Check local listings";
+
+    container.innerHTML = `
+        <div class="glass-panel rounded-3xl overflow-hidden animate-enter max-w-5xl mx-auto border-t border-white/10">
+            <!-- Header Bar -->
+            <div class="flex justify-between items-center p-6 bg-white/[0.02] border-b border-white/5">
                 <div class="flex items-center gap-3">
                     <div class="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
-                    <span class="text-sm font-mono text-gray-400 uppercase tracking-widest">
-                        ${state.selectedGenre === 'AI Choice' ? 'GEMI_FOUND_IT!' : `VIBE: ${state.selectedGenre.toUpperCase()}`}
-                    </span>
+                    <span class="text-xs font-mono text-gray-500 uppercase tracking-widest">AI RECOMMENDATION</span>
                 </div>
-                <div class="px-3 py-1 bg-orange-500/10 border border-orange-500/20 rounded text-orange-400 text-xs font-bold">
-                    IMDb ${state.movie.rating}
-                </div>
+                <button onclick="reset()" class="text-xs font-bold text-gray-500 hover:text-white uppercase tracking-widest flex items-center gap-1 hover:translate-x-1 transition-transform">
+                    Next Search <i data-lucide="chevron-right" width="14"></i>
+                </button>
             </div>
 
-            <div class="p-8 md:p-10 text-center relative z-10">
-                <h2 class="text-4xl md:text-5xl font-bold text-transparent bg-clip-text bg-gradient-to-br from-white to-gray-400 mb-4 tracking-tight">
-                    ${state.movie.title}
-                </h2>
-                <div class="inline-block px-4 py-1 rounded-full bg-white/10 text-gray-300 text-sm font-medium mb-6">
-                    ${state.movie.year}
-                </div>
-                <p class="text-gray-400 text-lg leading-relaxed max-w-2xl mx-auto italic border-l-2 border-orange-500/50 pl-4 md:pl-0 md:border-l-0">
-                    "${state.movie.desc}"
-                </p>
-
-                ${state.aiHype ? `
-                <div class="mt-8 p-6 bg-orange-500/5 border border-orange-500/20 rounded-xl text-left animate-fade-in">
-                    <div class="flex items-center gap-2 text-orange-400 text-sm font-bold mb-2 uppercase tracking-wide">
-                        <i data-lucide="sparkles" width="14"></i> Gemi Says:
+            <div class="flex flex-col md:flex-row">
+                <!-- Main Info -->
+                <div class="p-8 md:p-12 flex-1">
+                    <div class="mb-6 flex flex-wrap gap-3">
+                        <span class="px-3 py-1 bg-white/5 rounded-full text-xs font-bold text-gray-300 border border-white/5">${m.year}</span>
+                        <span class="px-3 py-1 bg-orange-500/10 rounded-full text-xs font-bold text-orange-400 border border-orange-500/20">IMDb ${m.rating}</span>
+                        <span class="px-3 py-1 bg-white/5 rounded-full text-xs font-bold text-gray-300 border border-white/5">${runtime}</span>
                     </div>
-                    <p class="text-gray-300 leading-relaxed">"${state.aiHype}"</p>
-                </div>` : ''}
-            </div>
 
-            <div class="p-6 bg-black/20 border-t border-white/5 flex flex-col md:flex-row gap-4">
-                <button onclick="toggleFavorite()" class="py-3 px-4 ${favoriteBtnClass} border rounded-xl font-medium transition-all flex items-center justify-center gap-2">
-                    <i data-lucide="${favoriteBtnIcon}" width="18" class="${isFav ? 'fill-current' : ''}"></i>
-                    ${isFav ? 'Liked' : 'Like'}
-                </button>
-                
-                ${!state.aiHype ? `
-                <button onclick="generateHype()" id="hypeBtn" class="flex-1 py-3 bg-white/5 hover:bg-white/10 text-white border border-white/10 rounded-xl font-medium transition-all flex items-center justify-center gap-2">
-                    ${state.isHypeLoading ? '<i data-lucide="loader-2" class="animate-spin" width="16"></i>' : '<i data-lucide="sparkles" class="text-orange-500" width="16"></i>'}
-                    Why Watch It? (Hype Me)
-                </button>` : ''}
-                
-                <button onclick="reset()" class="flex-1 py-3 bg-gradient-to-r from-orange-500 to-red-600 hover:shadow-[0_0_20px_rgba(234,88,12,0.3)] text-white rounded-xl font-bold transition-all">
-                    Change Mood?
-                </button>
+                    <h1 class="text-4xl md:text-6xl font-black text-transparent bg-clip-text bg-gradient-to-br from-white to-gray-500 mb-6 leading-tight">
+                        ${m.title}
+                    </h1>
+
+                    <p class="text-lg text-gray-300 leading-relaxed mb-8 italic border-l-2 border-orange-500/50 pl-6">
+                        "${m.desc}"
+                    </p>
+
+                    <!-- Meta Grid -->
+                    <div class="grid grid-cols-2 gap-y-6 gap-x-4 mb-8 text-sm">
+                        <div>
+                            <div class="text-gray-500 text-xs uppercase tracking-wider mb-1">Director</div>
+                            <div class="text-white font-medium">${director}</div>
+                        </div>
+                        <div>
+                            <div class="text-gray-500 text-xs uppercase tracking-wider mb-1">Cast</div>
+                            <div class="text-white font-medium truncate" title="${cast}">${cast}</div>
+                        </div>
+                        <div>
+                            <div class="text-gray-500 text-xs uppercase tracking-wider mb-1">Box Office</div>
+                            <div class="text-white font-medium text-green-400">${boxOffice}</div>
+                        </div>
+                        <div>
+                            <div class="text-gray-500 text-xs uppercase tracking-wider mb-1">Streaming Estimate</div>
+                            <div class="text-white font-medium text-blue-400 flex items-center gap-1">
+                                <i data-lucide="tv" width="12"></i> ${streaming}
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Actions -->
+                    <div class="flex flex-wrap gap-3">
+                        <button onclick="toggleFavorite()" class="px-6 py-3 rounded-xl font-bold flex items-center gap-2 transition-all ${isFav ? 'bg-red-500 text-white shadow-lg shadow-red-900/20' : 'bg-white/10 hover:bg-white/20 text-white'}">
+                            <i data-lucide="heart" class="${isFav ? 'fill-current' : ''}"></i> ${isFav ? 'Added' : 'Add to List'}
+                        </button>
+                        
+                        <button onclick="watchTrailer('${m.title}', '${m.year}')" class="px-6 py-3 rounded-xl font-bold bg-white text-black hover:bg-gray-200 transition-colors flex items-center gap-2">
+                            <i data-lucide="youtube"></i> Trailer
+                        </button>
+
+                        <button onclick="copyToClipboard('${m.title}')" class="px-4 py-3 rounded-xl bg-white/5 hover:bg-white/10 text-gray-400 transition-colors" data-tooltip="Copy Title">
+                            <i data-lucide="copy"></i>
+                        </button>
+                        
+                         <button onclick="findSimilar('${m.title}')" class="px-4 py-3 rounded-xl bg-white/5 hover:bg-white/10 text-orange-400 transition-colors" data-tooltip="More Like This">
+                            <i data-lucide="wand-2"></i>
+                        </button>
+                    </div>
+                </div>
             </div>
         </div>
     `;
-    container.innerHTML = html;
 }
 
 function renderMyListView() {
-    const favorites = getFavorites();
-    const history = getWatchHistory();
-    
-    const favoritesHTML = favorites.length > 0 
-        ? favorites.map(movie => createFavoriteCard(movie)).join('')
-        : '<div class="text-center py-12 text-gray-500"><i data-lucide="heart-off" class="w-16 h-16 mx-auto mb-4 opacity-50"></i><p>No favorites yet. Start liking movies!</p></div>';
-    
-    const historyHTML = history.length > 0
-        ? history.slice(0, 10).map(movie => createHistoryCard(movie)).join('')
-        : '<div class="text-center py-12 text-gray-500"><i data-lucide="clock" class="w-16 h-16 mx-auto mb-4 opacity-50"></i><p>No watch history yet.</p></div>';
-    
-    const html = `
-        <div class="animate-fade-in">
-            <button onclick="reset()" class="text-gray-500 hover:text-white flex items-center gap-2 text-sm mb-6 transition-colors">
-                <i data-lucide="arrow-left" width="16"></i> Back to Home
-            </button>
-            
-            <div class="mb-12">
-                <div class="flex justify-between items-center mb-4">
-                    <div>
-                        <h2 class="text-3xl font-bold text-white mb-2 flex items-center gap-3">
-                            <i data-lucide="heart" class="text-red-500" width="28"></i>
-                            My Favorites (${favorites.length})
-                        </h2>
-                        <p class="text-gray-400 text-sm">Movies you've liked</p>
-                    </div>
-                    ${favorites.length > 0 ? `
-                    <button onclick="clearAllFavorites()" class="text-red-400 hover:text-red-300 text-sm px-4 py-2 border border-red-500/30 hover:bg-red-500/10 rounded-lg transition-all flex items-center gap-2">
-                        <i data-lucide="trash-2" width="16"></i>
-                        Clear All
-                    </button>
-                    ` : ''}
-                </div>
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    ${favoritesHTML}
-                </div>
-            </div>
-            
-            <div class="mb-8">
-                <div class="flex justify-between items-center mb-4">
-                    <div>
-                        <h2 class="text-3xl font-bold text-white mb-2 flex items-center gap-3">
-                            <i data-lucide="clock" class="text-orange-500" width="28"></i>
-                            Recently Viewed
-                        </h2>
-                        <p class="text-gray-400 text-sm">Movies you've checked out</p>
-                    </div>
-                    ${history.length > 0 ? `
-                    <button onclick="clearWatchHistory()" class="text-gray-400 hover:text-gray-300 text-sm px-4 py-2 border border-white/10 hover:bg-white/5 rounded-lg transition-all flex items-center gap-2">
-                        <i data-lucide="trash-2" width="16"></i>
-                        Clear History
-                    </button>
-                    ` : ''}
-                </div>
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    ${historyHTML}
-                </div>
-            </div>
-        </div>
-    `;
-    container.innerHTML = html;
-}
-
-function createFavoriteCard(movie) {
-    const date = new Date(movie.addedAt);
-    const dateStr = date.toLocaleDateString();
-    const movieId = movie.id || `${movie.title}_${movie.year}`;
-    
-    return `
-        <div class="bg-[#121212] border border-white/5 rounded-xl p-5 hover:border-white/10 transition-all group cursor-pointer" onclick="viewMovieFromFavorites('${movieId}')">
-            <div class="flex justify-between items-start mb-3">
-                <div class="flex-1">
-                    <h3 class="text-lg font-bold text-white mb-1 group-hover:text-orange-400 transition-colors">${movie.title}</h3>
-                    <div class="flex items-center gap-3 text-sm text-gray-400">
-                        <span>${movie.year}</span>
-                        <span>•</span>
-                        <span class="text-orange-400 font-bold">IMDb ${movie.rating}</span>
-                    </div>
-                </div>
-                <button onclick="event.stopPropagation(); removeFavorite('${movie.id}')" class="text-red-400 hover:text-red-300 transition-colors p-2 hover:bg-red-500/10 rounded-lg">
-                    <i data-lucide="x" width="18"></i>
+    const list = getFavorites();
+    container.innerHTML = `
+        <div class="animate-enter max-w-5xl mx-auto">
+            <div class="flex justify-between items-center mb-8">
+                <button onclick="reset()" class="text-gray-400 hover:text-white flex items-center gap-2 transition-colors">
+                    <i data-lucide="arrow-left"></i> Back
+                </button>
+                <button onclick="exportFavorites()" class="px-4 py-2 text-xs font-mono border border-white/10 rounded hover:bg-white/5 transition-colors flex items-center gap-2">
+                    <i data-lucide="download" width="14"></i> Export JSON
                 </button>
             </div>
-            <p class="text-gray-400 text-sm mb-3 italic">"${movie.desc}"</p>
-            <div class="flex items-center justify-between text-xs text-gray-500">
-                <span class="px-2 py-1 bg-white/5 rounded">${movie.genre}</span>
-                <span>Added ${dateStr}</span>
-            </div>
-        </div>
-    `;
-}
 
-function createHistoryCard(movie) {
-    const date = new Date(movie.viewedAt);
-    const dateStr = date.toLocaleDateString();
-    const isFav = isFavorite(movie);
-    const movieKey = `${movie.title}_${movie.year}`;
-    
-    return `
-        <div class="bg-[#121212] border border-white/5 rounded-xl p-5 hover:border-white/10 transition-all group cursor-pointer" onclick="viewMovieFromHistory('${movieKey}')">
-            <div class="flex justify-between items-start mb-3">
-                <div class="flex-1">
-                    <h3 class="text-lg font-bold text-white mb-1 group-hover:text-orange-400 transition-colors">${movie.title}</h3>
-                    <div class="flex items-center gap-3 text-sm text-gray-400">
-                        <span>${movie.year}</span>
-                        <span>•</span>
-                        <span class="text-orange-400 font-bold">IMDb ${movie.rating}</span>
-                    </div>
+            <h1 class="text-4xl font-bold mb-2">My List</h1>
+            <p class="text-gray-500 mb-8">Your curated collection.</p>
+
+            ${list.length === 0 ? `
+                <div class="text-center py-20 border border-dashed border-white/10 rounded-2xl">
+                    <i data-lucide="film" class="w-16 h-16 text-gray-700 mx-auto mb-4"></i>
+                    <p class="text-gray-500">Your list is empty. Go find some gems!</p>
                 </div>
-                ${isFav ? '<i data-lucide="heart" class="text-red-500 fill-current" width="18"></i>' : ''}
-            </div>
-            <p class="text-gray-400 text-sm mb-3 italic">"${movie.desc}"</p>
-            <div class="flex items-center justify-between text-xs text-gray-500">
-                <span class="px-2 py-1 bg-white/5 rounded">${movie.genre}</span>
-                <span>Viewed ${dateStr}</span>
-            </div>
+            ` : `
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    ${list.map(m => `
+                        <div class="glass-panel p-5 rounded-xl hover:border-orange-500/30 transition-all group relative">
+                            <button onclick="event.stopPropagation(); removeFromFavorites('${m.id}'); render();" class="absolute top-4 right-4 text-gray-600 hover:text-red-500 transition-colors"><i data-lucide="trash-2" width="16"></i></button>
+                            <h3 class="font-bold text-xl mb-1 pr-8 text-white">${m.title}</h3>
+                            <div class="flex gap-3 text-xs text-gray-400 mb-3 font-mono">
+                                <span>${m.year}</span>
+                                <span class="text-orange-400">${m.rating}</span>
+                                <span>${m.genre || 'Saved'}</span>
+                            </div>
+                            <p class="text-sm text-gray-500 italic line-clamp-2">"${m.desc}"</p>
+                        </div>
+                    `).join('')}
+                </div>
+            `}
         </div>
     `;
 }
 
-// --- CONTROLLER FUNCTIONS ---
-function setStep(newStep) {
-    state.step = newStep;
-    render();
+// --- LOGIC HELPER ---
+function setStep(s) { state.step = s; render(); }
+
+function randomMood() {
+    const mood = RANDOM_MOODS[Math.floor(Math.random() * RANDOM_MOODS.length)];
+    state.customMood = mood;
+    render(); // Re-render to show value
 }
 
-function pickGenre(genre) {
-    if (genre === 'AI Choice') {
-        setStep('ai-input');
-        return;
-    }
-    state.selectedGenre = genre;
-    const list = movieDatabase[genre].list;
-    state.movie = list[Math.floor(Math.random() * list.length)];
-    state.aiHype = null;
-    state.step = 'result';
-    render();
+function watchTrailer(title, year) {
+    const query = encodeURIComponent(`${title} ${year} trailer`);
+    window.open(`https://www.youtube.com/results?search_query=${query}`, '_blank');
+}
+
+function copyToClipboard(text) {
+    navigator.clipboard.writeText(text);
+    showNotification('Copied to clipboard');
 }
 
 async function handleAIMoodSubmit() {
-    if (!state.customMood.trim()) {
-        alert("Please describe what kind of movie you're looking for!");
-        return;
-    }
-    
-    if (!API_READY) {
-        alert("API not ready. Please wait a moment and try again.");
-        return;
-    }
+    if (!state.customMood.trim()) return showNotification('Please describe a mood!', 'error');
     
     state.isLoading = true;
-    render();
+    render(); // Shows skeleton
     
-    const prompt = `Recommend ONE movie based on this mood/request: "${state.customMood}". 
+    const prompt = `Recommend ONE movie for: "${state.customMood}".
+    JSON format ONLY:
+    {
+        "title": "string",
+        "year": "string",
+        "rating": "string",
+        "desc": "string",
+        "director": "string",
+        "cast": ["string", "string"],
+        "runtime": "string",
+        "box_office": "string",
+        "streaming": "string (e.g. Netflix, Rent)"
+    }`;
 
-Return ONLY a valid JSON object with this exact structure:
-{
-  "title": "Movie Title",
-  "year": "YYYY",
-  "rating": "X.X",
-  "desc": "Brief description"
-}
-
-Do not include any markdown formatting, code blocks, or extra text. Just the JSON object.`;
-
-    let resultText = null;
     try {
-        resultText = await callGemini(prompt);
+        const text = await callGemini(prompt);
+        if(!text) throw new Error("No response");
         
-        if (!resultText) {
-            throw new Error("No response from AI. Please check your API key and try again.");
-        }
+        let clean = text.replace(/```json|```/g, '').trim();
+        const start = clean.indexOf('{');
+        const end = clean.lastIndexOf('}');
+        if (start !== -1 && end !== -1) clean = clean.substring(start, end + 1);
         
-        // Clean up the response - remove markdown code blocks if present
-        let cleanJson = resultText.trim();
-        cleanJson = cleanJson.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim();
-        
-        // Try to extract JSON if it's embedded in text
-        const jsonMatch = cleanJson.match(/\{[\s\S]*\}/);
-        if (jsonMatch) {
-            cleanJson = jsonMatch[0];
-        }
-        
-        const movie = JSON.parse(cleanJson);
-        
-        // Validate required fields
-        if (!movie.title || !movie.year) {
-            throw new Error("Invalid movie data received from AI");
-        }
-        
-        // Ensure all fields exist with defaults
-        state.movie = {
-            title: movie.title,
-            year: movie.year || "Unknown",
-            rating: movie.rating || "N/A",
-            desc: movie.desc || "No description available"
-        };
-        
-        state.selectedGenre = 'AI Choice';
-        state.aiHype = null;
+        const data = JSON.parse(clean);
+        state.movie = { ...data, genre: 'AI Choice' };
         state.step = 'result';
-    } catch (e) {
-        console.error("Error parsing AI response:", e);
-        if (resultText) {
-            console.error("Raw response:", resultText);
-        }
-        const errorMsg = e.message || "Unknown error occurred";
-        alert(`Failed to get movie recommendation: ${errorMsg}. Please try again with a different description.`);
+    } catch(e) {
+        console.error(e);
+        showNotification('AI failed to respond. Try again.', 'error');
     } finally {
         state.isLoading = false;
         render();
     }
 }
 
-async function generateHype() {
-    if (!state.movie) return;
-    
-    if (!API_READY) {
-        alert("API not ready. Please wait a moment and try again.");
-        return;
-    }
-    
-    state.isHypeLoading = true;
-    render();
-    
-    const prompt = `Give me a short, exciting hype pitch (2-3 sentences) for the movie "${state.movie.title}" (${state.movie.year}). Make it engaging and make me want to watch it!`;
-    
-    try {
-        const hype = await callGemini(prompt);
-        if (hype) {
-            state.aiHype = hype.trim();
-        } else {
-            throw new Error("No response from AI");
-        }
-    } catch (e) {
-        console.error("Error generating hype:", e);
-        alert(`Failed to generate hype. Please try again.`);
-    } finally {
-        state.isHypeLoading = false;
-        render();
-    }
+function findSimilar(title) {
+    state.customMood = `Movies exactly like ${title}`;
+    state.step = 'ai-input';
+    handleAIMoodSubmit();
 }
 
-function toggleFavorite() {
-    if (!state.movie) return;
-    
-    const isFav = isFavorite(state.movie);
-    
-    if (isFav) {
-        const movieId = getMovieId(state.movie);
-        if (movieId) {
-            removeFromFavorites(movieId);
-        }
-    } else {
-        const added = addToFavorites(state.movie);
-        if (added) {
-            // Show a brief notification
-            showNotification('Added to favorites! ❤️');
-        }
-    }
-    
-    render();
-}
-
-function removeFavorite(movieId) {
-    removeFromFavorites(movieId);
-    showNotification('Removed from favorites');
-    render();
-}
-
-function clearAllFavorites() {
-    if (confirm('Are you sure you want to remove all favorites?')) {
-        localStorage.removeItem('gemi_favorites');
-        showNotification('All favorites cleared');
-        render();
-    }
-}
-
-function clearWatchHistory() {
-    if (confirm('Are you sure you want to clear watch history?')) {
-        localStorage.removeItem('gemi_watch_history');
-        showNotification('Watch history cleared');
-        render();
-    }
-}
-
-function showNotification(message) {
-    // Create a simple notification toast
-    const toast = document.createElement('div');
-    toast.className = 'fixed top-4 right-4 bg-orange-500 text-white px-6 py-3 rounded-lg shadow-lg z-50 animate-fade-in';
-    toast.textContent = message;
-    document.body.appendChild(toast);
-    
-    setTimeout(() => {
-        toast.style.opacity = '0';
-        toast.style.transition = 'opacity 0.3s';
-        setTimeout(() => toast.remove(), 300);
-    }, 2000);
-}
-
-function reset() {
-    state.step = 'genre';
-    state.selectedGenre = null;
-    state.movie = null;
-    state.customMood = '';
-    state.aiHype = null;
-    render();
-}
-
-function showMyList() {
-    state.step = 'mylist';
-    render();
-}
-
-function viewMovieFromFavorites(movieId) {
-    const favorites = getFavorites();
-    const movie = favorites.find(fav => fav.id === movieId);
-    if (movie) {
-        state.movie = movie;
-        state.selectedGenre = movie.genre || 'Unknown';
-        state.step = 'result';
-        state.aiHype = null;
-        render();
-    }
-}
-
-function viewMovieFromHistory(movieKey) {
-    const history = getWatchHistory();
-    // Find movie by matching the key pattern (title_year)
-    const movie = history.find(h => {
-        const key = `${h.title}_${h.year}`;
-        return key === movieKey;
+function attachTooltips() {
+    const els = document.querySelectorAll('[data-tooltip]');
+    els.forEach(el => {
+        el.title = el.getAttribute('data-tooltip'); // Native fallback for now, works well with glass UI
     });
-    if (movie) {
-        state.movie = movie;
-        state.selectedGenre = movie.genre || 'Unknown';
-        state.step = 'result';
-        state.aiHype = null;
-        render();
-    }
 }
 
-// Start app - Initialize API key first
-initializeAPIKey().then(() => {
-    render();
-});
+// Mock DB for Genre Clicks (Quick fix to keep genre buttons working without calling AI every time if we want instant results, 
+// BUT for this premium version, let's treat Genres as Prompts to get new data every time for variety)
+function pickGenre(genre) {
+    state.customMood = `The absolute best ${genre} movie of all time.`;
+    state.step = 'ai-input';
+    handleAIMoodSubmit();
+}
+
+// --- START ---
+initializeAPIKey();
+render();
