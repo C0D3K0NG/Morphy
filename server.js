@@ -31,49 +31,52 @@ app.get('/api/config', (req, res) => {
 // Generate route
 // Generate route
 app.post('/api/generate', async (req, res) => {
-    // 1. Determine which key to use
-    // Priority: GEMINI_API_KEY -> OPENROUTER_API_KEY
-    const apiKey = process.env.GEMINI_API_KEY || process.env.OPENROUTER_API_KEY;
-
-    if (!apiKey) {
-        console.error('❌ No API Key found in environment variables');
-        return res.status(500).json({ error: 'Server missing API Key' });
-    }
-
-    const { prompt } = req.body || {};
-    if (!prompt) return res.status(400).json({ error: 'Prompt required' });
-
-    // 2. Check Key Type
-    const isGoogleKey = apiKey.startsWith('AIza');
-
-    console.log(`[Server] Using Key Type: ${isGoogleKey ? 'Google Official (AIza...)' : 'OpenRouter (sk-or...)'}`);
-
     try {
+        // 1. Determine Key
+        const apiKey = process.env.GEMINI_API_KEY || process.env.OPENROUTER_API_KEY;
+
+        if (!apiKey) {
+            console.error('❌ [Server] ERROR: No API Key found in .env (GEMINI_API_KEY or OPENROUTER_API_KEY)');
+            return res.status(500).json({ error: 'Server missing API Key configuration' });
+        }
+
+        // 2. Debug Log (Masked)
+        const maskedKey = apiKey.substring(0, 4) + '...' + apiKey.substring(apiKey.length - 4);
+        console.log(`[Server] Request received. Key detected: ${maskedKey}`);
+
+        // 3. Determine Provider
+        const isGoogleKey = apiKey.startsWith('AIza');
+        const provider = isGoogleKey ? 'GOOGLE_DIRECT' : 'OPENROUTER_PROXY';
+        console.log(`[Server] Provider Mode: ${provider}`);
+
+        const { prompt } = req.body || {};
+        if (!prompt) return res.status(400).json({ error: 'Prompt is missing' });
+
+        let textResponse = '';
+
         if (isGoogleKey) {
             // --- GOOGLE DIRECT ---
+            console.log('[Server] Initializing GoogleGenerativeAI...');
             const genAI = new GoogleGenerativeAI(apiKey);
-            const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash-exp' });
+            // Use 1.5 Flash for stability
+            const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
 
+            console.log('[Server] Sending prompt to Google...');
             const result = await model.generateContent(prompt);
             const response = await result.response;
-            const text = response.text();
-
-            console.log(`[Gemini Direct] Success! ${text.length} chars.`);
-            return res.json({ text });
+            textResponse = response.text();
 
         } else {
-            // --- OPENROUTER FALLBACK ---
-            // If they have an OR key, we must use the OR endpoint
+            // --- OPENROUTER ---
             const modelName = process.env.OPENROUTER_MODEL || 'google/gemini-2.0-flash-exp:free';
-
-            console.log(`[OpenRouter] Requesting model: ${modelName}`);
+            console.log(`[Server] Fetching from OpenRouter (${modelName})...`);
 
             const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                     'Authorization': `Bearer ${apiKey}`,
-                    'HTTP-Referer': process.env.OPENROUTER_SITE || 'http://localhost:3000',
+                    'HTTP-Referer': 'http://localhost:3000',
                     'X-Title': 'Gemi Movie Den'
                 },
                 body: JSON.stringify({
@@ -83,22 +86,25 @@ app.post('/api/generate', async (req, res) => {
             });
 
             if (!response.ok) {
-                const err = await response.json();
-                throw new Error(err.error?.message || `OpenRouter ${response.status}`);
+                const errText = await response.text();
+                throw new Error(`OpenRouter HTTP ${response.status}: ${errText}`);
             }
 
             const data = await response.json();
-            const text = data.choices?.[0]?.message?.content;
-
-            console.log(`[OpenRouter] Success! ${text?.length} chars.`);
-            return res.json({ text });
+            textResponse = data.choices?.[0]?.message?.content;
         }
+
+        if (!textResponse) throw new Error('Empty response from AI provider');
+
+        console.log(`[Server] Success! Generated ${textResponse.length} chars.`);
+        res.json({ text: textResponse });
+
     } catch (error) {
-        console.error('[Generate Error]', error.message);
+        console.error('❌ [Server] GENERATION FAILED:');
+        console.error(error);
         res.status(500).json({
-            error: isGoogleKey
-                ? `Google API Error: ${error.message}`
-                : `OpenRouter Error: ${error.message}`
+            error: error.message || 'Unknown server error',
+            details: error.toString()
         });
     }
 });
